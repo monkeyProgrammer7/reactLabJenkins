@@ -25,18 +25,17 @@ pipeline {
         }
 
         // Etapa 3: Ejecutar pruebas unitarias
-        stage('Unit Tests') {
+        stage('Pruebas Unitarias') {
             steps {
                 dir('frontend') {
-                    // Ejecuta pruebas sin modo interactivo (vitest run)
-                    sh 'NO_COLOR=1 npm test -- --silent > test-output.txt 2>&1 || true'
-                    // Muestra el reporte simple en la consola
-                    sh 'cat test-output.txt'
+                    // vitest run: salida normal en consola + reporte JUnit en junit.xml
+                    sh 'NO_COLOR=1 npm test -- --reporter=default --reporter=junit --outputFile.junit=junit.xml'
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'frontend/test-output.txt', allowEmptyArchive: true
+                    junit 'frontend/junit.xml' // Publica reporte en Jenkins
+                    archiveArtifacts artifacts: 'frontend/junit.xml', allowEmptyArchive: true
                 }
             }
         }

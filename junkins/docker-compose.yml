@@ -21,5 +21,17 @@ services:
       - ../frontend:/app
       - /app/node_modules
     restart: unless-stopped
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ngrok
+    # Expone Jenkins a internet (para los webhooks de GitHub)
+    command: http jenkins:8080
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040" # Panel de ngrok con la URL pública y las peticiones
+    depends_on:
+      - jenkins
+    restart: unless-stopped
 volumes:
   jenkins_home:
