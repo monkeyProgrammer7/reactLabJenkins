@@ -1,0 +1,25 @@
+services:
+  jenkins:
+    build: .
+    image: jenkins-node:lts
+    container_name: jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    environment:
+      - JAVA_OPTS=-Xmx2048m -Xms512m
+    restart: unless-stopped
+
+  frontend:
+    build: ../frontend
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+volumes:
+  jenkins_home:
