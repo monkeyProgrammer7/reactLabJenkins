@@ -21,6 +21,17 @@ services:
       - ../frontend:/app
       - /app/node_modules
     restart: unless-stopped
+
+  backend:
+    build: ../backend
+    container_name: backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
   ngrok:
     image: ngrok/ngrok:latest
     container_name: ngrok
@@ -33,5 +44,51 @@ services:
     depends_on:
       - jenkins
     restart: unless-stopped
+
+  # Análisis estático de código. Desde Jenkins se accede como http://sonarqube:9000
+  sonarqube:
+    image: sonarqube:community
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://sonarqube-db:5432/${SONAR_DB_NAME:-sonar}
+      - SONAR_JDBC_USERNAME=${SONAR_DB_USER:-sonar}
+      - SONAR_JDBC_PASSWORD=${SONAR_DB_PASSWORD:-sonar}
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    # Elasticsearch (embebido en SonarQube) necesita muchos descriptores de archivo
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc: 8192
+    depends_on:
+      sonarqube-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sonarqube-db:
+    image: postgres:17-alpine
+    container_name: sonarqube-db
+    environment:
+      - POSTGRES_DB=${SONAR_DB_NAME:-sonar}
+      - POSTGRES_USER=${SONAR_DB_USER:-sonar}
+      - POSTGRES_PASSWORD=${SONAR_DB_PASSWORD:-sonar}
+    volumes:
+      - sonarqube_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   jenkins_home:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  sonarqube_db:

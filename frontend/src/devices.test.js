@@ -62,11 +62,3 @@ describe('summarize', () => {
   })
 })
 
-// Prueba que falla a propósito para ver cómo lo reporta Jenkins
-describe('prueba fallida (demo)', () => {
-  it('espera que un dispositivo nuevo quede en línea', () => {
-    const device = createDevice({ name: 'Sensor Demo', type: 'GPS', location: 'Cali' }, devices)
-    // Falla: createDevice siempre crea el dispositivo como 'offline'
-    expect(device.status).toBe('online')
-  })
-})

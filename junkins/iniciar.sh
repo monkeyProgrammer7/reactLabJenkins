@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Descarga las imágenes y levanta Jenkins + frontend
+# Descarga las imágenes y levanta Jenkins, frontend, backend y SonarQube
 set -e
 cd "$(dirname "$0")"
 
@@ -13,5 +13,7 @@ docker compose up -d --build
 
 docker compose ps
 echo
-echo "Jenkins:  http://localhost:8080"
-echo "Frontend: http://localhost:5173"
+echo "Jenkins:   http://localhost:8080"
+echo "Frontend:  http://localhost:5173"
+echo "Backend:   http://localhost:3000"
+echo "SonarQube: http://localhost:9000 (usuario/clave inicial: admin/admin)"
