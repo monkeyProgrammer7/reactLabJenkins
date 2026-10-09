@@ -2,3 +2,7 @@ node_modules
 dist
 junit.xml
 coverage
+junit-*.xml
+prod
+snyk-results.json
+snyk-report.html

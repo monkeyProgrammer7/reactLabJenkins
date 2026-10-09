@@ -23,7 +23,7 @@ pipeline {
                 // La app React está en la carpeta frontend/ del repositorio
                 dir('frontend') {
                     sh 'npm install'
-                    sh 'npm run build' // Ejecuta el build de React
+                    sh 'npm run build' // Ejecuta el build de React (genera dist/)
                 }
             }
         }
@@ -47,7 +47,38 @@ pipeline {
             }
         }
 
-        // Etapa 4: Análisis estático de código con SonarQube
+        // Etapa 4: Análisis de vulnerabilidades en las dependencias con Snyk
+        // Si hay vulnerabilidades altas o críticas el build queda UNSTABLE, pero el pipeline continúa
+        stage('Security Scan with Snyk') {
+            steps {
+                // 'Snyk' es una credencial Secret text con el API token de Snyk.
+                // La CLI lee la variable SNYK_TOKEN automáticamente, por eso no hace falta 'snyk auth'.
+                dir('frontend') {
+                    withCredentials([string(credentialsId: 'Snyk', variable: 'SNYK_TOKEN')]) {
+                        script {
+                            // Códigos de salida de snyk test: 0 = sin vulnerabilidades, 1 = encontró vulnerabilidades, 2 o más = error
+                            def status = sh(returnStatus: true, script: 'npx --yes snyk test --severity-threshold=high --json-file-output=snyk-results.json')
+                            if (status == 1) {
+                                unstable('Snyk encontró vulnerabilidades de severidad alta o crítica')
+                            } else if (status > 1) {
+                                error("Snyk no pudo ejecutar el análisis (código ${status})")
+                            }
+                            // Registra las dependencias en el dashboard de Snyk para recibir alertas de vulnerabilidades nuevas
+                            sh 'npx --yes snyk monitor --project-name=telemetria-frontend'
+                            // Reporte HTML legible generado a partir del JSON
+                            sh 'npx --yes snyk-to-html -i snyk-results.json -o snyk-report.html'
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'frontend/snyk-results.json, frontend/snyk-report.html', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // Etapa 5: Análisis estático de código con SonarQube
         stage('SonarQube Analysis') {
             steps {
                 dir('frontend') {
@@ -61,7 +92,8 @@ pipeline {
                 }
             }
         }
-        // Etapa 5: Esperar el resultado del Quality Gate de SonarQube
+
+        // Etapa 6: Esperar el resultado del Quality Gate de SonarQube
         // SonarQube avisa a Jenkins mediante un webhook a http://jenkins:8080/sonarqube-webhook/
         stage('Quality Gate') {
             steps {
@@ -75,15 +107,95 @@ pipeline {
                 }
             }
         }
+
+        // Etapa 7: Descargar Chromium y Firefox para las pruebas en navegador.
+        // Playwright los guarda en ~/.cache/ms-playwright (volumen jenkins_home), así que solo se descargan la primera vez
+        // o cuando cambia la versión de playwright en package-lock.json.
+        stage('Preparar navegadores') {
+            steps {
+                dir('frontend') {
+                    sh 'npx playwright install chromium firefox'
+                }
+            }
+        }
+
+        // Etapa 8: Las mismas pruebas, en navegadores reales y en paralelo (Vitest Browser Mode + Playwright).
+        // Si fallan en un navegador, el build queda UNSTABLE y el otro navegador sigue corriendo.
+        stage('Parallel Tests') {
+            parallel {
+                stage('Chrome Tests') {
+                    steps {
+                        dir('frontend') {
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                                sh 'NO_COLOR=1 npm run test:chrome -- --reporter=default --reporter=junit --outputFile.junit=junit-chrome.xml'
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: 'frontend/junit-chrome.xml', allowEmptyResults: true
+                        }
+                    }
+                }
+                stage('Firefox Tests') {
+                    steps {
+                        dir('frontend') {
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                                sh 'NO_COLOR=1 npm run test:firefox -- --reporter=default --reporter=junit --outputFile.junit=junit-firefox.xml'
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: 'frontend/junit-firefox.xml', allowEmptyResults: true
+                        }
+                    }
+                }
+            }
+        }
+
+        // Etapa 9: Despliegue simulado: copia el build (dist/) a una carpeta prod/ y la guarda como artefacto.
+        // El despliegue real a Vercel lo hace el GitHub Action (.github/workflows/deploy.yml).
+        stage('Deploy (Simulated)') {
+            // No se "despliega" si fallaron las pruebas unitarias (catchError deja seguir el pipeline en FAILURE)
+            when {
+                expression { currentBuild.currentResult != 'FAILURE' }
+            }
+            steps {
+                dir('frontend') {
+                    sh '''
+                        set -e
+                        echo "Contenido de dist/:"
+                        ls -la dist/
+                        rm -rf prod && mkdir -p prod
+                        cp -r dist/* prod/
+                        echo "Contenido de prod/:"
+                        ls -la prod/
+                    '''
+                }
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'frontend/prod/**', fingerprint: true
+                }
+            }
+        }
     }
 
-    // Post-actions (opcional)
+    // Post-actions
     post {
         success {
             echo '¡Pipeline ejecutado con éxito!'
         }
+        unstable {
+            echo 'Pipeline inestable: revisar Snyk o las pruebas en navegador.'
+        }
         failure {
             echo 'Pipeline fallido. Revisar logs.'
+        }
+        // cleanup corre al final, después de todos los demás bloques post
+        cleanup {
+            cleanWs() // Borra el workspace para que el siguiente build empiece limpio
         }
     }
 }
