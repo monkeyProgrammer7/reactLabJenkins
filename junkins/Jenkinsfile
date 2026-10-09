@@ -6,7 +6,7 @@ pipeline {
     }
 
     environment {
-        SCANNER_HOME = tool 'SonarQubeScanner' // SonarQube Scanner definido en Global Tool Configuration
+        SCANNER_HOME = tool 'sonar-scanner' // SonarQube Scanner definido en Global Tool Configuration
     }
 
     stages {
@@ -51,10 +51,10 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 dir('frontend') {
-                    // 'SonarQube' es el servidor definido en Manage Jenkins > System (URL http://sonarqube:9000).
+                    // 'sonar-jenkins' es el servidor definido en Manage Jenkins > System (URL http://sonarqube:9000).
                     // withSonarQubeEnv inyecta la URL y el token, por eso no se pasan aquí.
                     // El resto de la configuración está en frontend/sonar-project.properties
-                    withSonarQubeEnv('SonarQube') {
+                    withSonarQubeEnv('sonar-jenkins') {
                         // La ruta de Node depende de la máquina de Jenkins, por eso se pasa aquí y no en el archivo
                         sh '${SCANNER_HOME}/bin/sonar-scanner -Dsonar.nodejs.executable=$(command -v node)'
                     }
